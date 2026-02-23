@@ -1,0 +1,18 @@
+[project]
+name = "research-copilot"
+version = "0.1.0"
+description = "A TUI tool for documenting research papers"
+requires-python = ">=3.12"
+dependencies = [
+    "windows-curses>=2.3.0; sys_platform == 'win32'"
+]
+
+[project.scripts]
+research = "main:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["main", "paper", "storage"]
