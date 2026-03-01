@@ -1,7 +1,7 @@
 """API endpoints for paper/note operations."""
 from fastapi import APIRouter, Depends
 from .service import PaperService
-from .model import NoteCreate, NoteUpdate, NoteResponse, NotesResponse, DeleteResponse
+from .model import NoteCreate, NoteUpdate, NotePositionUpdate, NoteResponse, NotesResponse, DeleteResponse
 
 router = APIRouter(tags=["papers"])
 
@@ -68,3 +68,17 @@ def delete_note(note_id: str, service: PaperService = Depends(get_service)):
     """
     success = service.delete_note(note_id)
     return DeleteResponse(success=success)
+
+@router.patch("/notes/{note_id}/position", response_model=NoteResponse)
+def update_note_position(note_id: str, position: NotePositionUpdate, service: PaperService = Depends(get_service)):
+    """Update note position on canvas.
+    
+    Args:
+        note_id: Note identifier.
+        position: Position update data.
+        service: Injected paper service.
+        
+    Returns:
+        Updated note.
+    """
+    return service.update_note_position(note_id, position)

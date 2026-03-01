@@ -6,12 +6,23 @@ class NoteCreate(BaseModel):
     page: str = ""
     tags: list[str] = []
     content: str
+    position_x: float = 0.0
+    position_y: float = 0.0
+    width: float = 300.0
+    height: float = 200.0
 
 class NoteUpdate(BaseModel):
     """Request model for updating a note."""
     page: str | None = None
     tags: list[str] | None = None
     content: str | None = None
+
+class NotePositionUpdate(BaseModel):
+    """Request model for updating note position."""
+    position_x: float
+    position_y: float
+    width: float | None = None
+    height: float | None = None
 
 class NoteResponse(BaseModel):
     """Response model for a note."""
@@ -21,6 +32,10 @@ class NoteResponse(BaseModel):
     page: str
     tags: list[str]
     content: str
+    position_x: float
+    position_y: float
+    width: float
+    height: float
     created_at: str
     updated_at: str
 

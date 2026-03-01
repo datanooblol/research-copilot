@@ -3,11 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Note, NoteCreate } from '@/types';
-import { getNotes, createNote, updateNote, deleteNote, getDashboardPapers } from '@/lib/api';
+import { getNotes, createNote, updateNote, deleteNote, getDashboardPapers, updateNotePosition } from '@/lib/api';
 import Button from '@/components/atoms/Button';
-import NoteCard from '@/components/molecules/NoteCard';
-import NoteModal from '@/components/organisms/NoteModal';
 import PdfViewer from '@/components/organisms/PdfViewer';
+import NotesCanvas from '@/components/organisms/NotesCanvas';
 
 export default function PaperPage() {
   const params = useParams();
@@ -16,8 +15,6 @@ export default function PaperPage() {
   
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showNoteModal, setShowNoteModal] = useState(false);
-  const [editingNote, setEditingNote] = useState<Note | undefined>();
   const [pdfUrl, setPdfUrl] = useState('');
   const [leftWidth, setLeftWidth] = useState(60);
   const [isDragging, setIsDragging] = useState(false);
@@ -75,18 +72,20 @@ export default function PaperPage() {
     }
   };
 
-  const handleSaveNote = async (data: NoteCreate) => {
+  const handleSaveNote = async (noteId: string, data: { page?: string; tags?: string[]; content?: string }) => {
     try {
-      if (editingNote) {
-        await updateNote(editingNote.note_id, data);
-      } else {
-        await createNote(paperId, data);
-      }
+      await updateNote(noteId, data);
       await loadNotes();
-      setShowNoteModal(false);
-      setEditingNote(undefined);
     } catch (error) {
       console.error('Failed to save note:', error);
+    }
+  };
+
+  const handleUpdatePosition = async (noteId: string, x: number, y: number, width?: number, height?: number) => {
+    try {
+      await updateNotePosition(noteId, { position_x: x, position_y: y, width, height });
+    } catch (error) {
+      console.error('Failed to update position:', error);
     }
   };
 
@@ -94,20 +93,29 @@ export default function PaperPage() {
     if (!confirm('Delete this note?')) return;
     try {
       await deleteNote(noteId);
-      setNotes(notes.filter(n => n.note_id !== noteId));
+      await loadNotes();
     } catch (error) {
       console.error('Failed to delete note:', error);
     }
   };
 
-  const openEditModal = (note: Note) => {
-    setEditingNote(note);
-    setShowNoteModal(true);
-  };
-
-  const openAddModal = () => {
-    setEditingNote(undefined);
-    setShowNoteModal(true);
+  const handleAddNote = async () => {
+    try {
+      const randomX = Math.random() * 500;
+      const randomY = Math.random() * 500;
+      await createNote(paperId, {
+        page: '',
+        tags: [],
+        content: JSON.stringify([{ type: 'paragraph', content: [] }]),
+        position_x: randomX,
+        position_y: randomY,
+        width: 300,
+        height: 200,
+      });
+      await loadNotes();
+    } catch (error) {
+      console.error('Failed to create note:', error);
+    }
   };
 
   const handleMouseDown = () => {
@@ -130,38 +138,16 @@ export default function PaperPage() {
           className="w-2 bg-gray-300 hover:bg-gray-400 cursor-col-resize flex-shrink-0"
           onMouseDown={handleMouseDown}
         />
-        <div style={{ width: `${100 - leftWidth}%` }} className="min-w-0 relative">
-          <div className="h-full overflow-auto bg-white p-4">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Notes</h2>
-              <Button onClick={openAddModal}>+ Add Note</Button>
-            </div>
-            <div className="space-y-4">
-              {notes.map(note => (
-                <NoteCard
-                  key={note.note_id}
-                  note={note}
-                  onEdit={() => openEditModal(note)}
-                  onDelete={() => handleDeleteNote(note.note_id)}
-                />
-              ))}
-            </div>
-            {notes.length === 0 && (
-              <p className="text-gray-500 text-center mt-8">No notes yet. Click "Add Note" to get started.</p>
-            )}
+        <div style={{ width: `${100 - leftWidth}%` }} className="min-w-0 relative bg-gray-50">
+          <div className="absolute top-4 right-4 z-10">
+            <Button onClick={handleAddNote}>+ Add Note</Button>
           </div>
-          {showNoteModal && (
-            <div className="absolute inset-0 bg-white z-10">
-              <NoteModal
-                note={editingNote}
-                onSave={handleSaveNote}
-                onClose={() => {
-                  setShowNoteModal(false);
-                  setEditingNote(undefined);
-                }}
-              />
-            </div>
-          )}
+          <NotesCanvas
+            notes={notes}
+            onUpdateNote={handleSaveNote}
+            onUpdatePosition={handleUpdatePosition}
+            onDeleteNote={handleDeleteNote}
+          />
         </div>
       </div>
     </div>

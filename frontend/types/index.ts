@@ -21,6 +21,10 @@ export interface Note {
   page: string;
   tags: string[];
   content: string;
+  position_x: number;
+  position_y: number;
+  width: number;
+  height: number;
   created_at: string;
   updated_at: string;
 }
@@ -29,12 +33,23 @@ export interface NoteCreate {
   page: string;
   tags: string[];
   content: string;
+  position_x?: number;
+  position_y?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface NoteUpdate {
   page?: string;
   tags?: string[];
   content?: string;
+}
+
+export interface NotePositionUpdate {
+  position_x: number;
+  position_y: number;
+  width?: number;
+  height?: number;
 }
 
 export interface SearchResult {

@@ -55,6 +55,8 @@ class DashboardRepository:
             [id]
         ).fetchone()
         
+        self.db.commit()
+        
         return dict(zip(['id', 'paper_id', 'paper_info', 'created_at'], result))
     
     def delete_paper(self, paper_id: str) -> bool:
@@ -68,4 +70,5 @@ class DashboardRepository:
         """
         self.db.execute("DELETE FROM papers WHERE paper_id = ?", [paper_id])
         self.db.execute("DELETE FROM dashboards WHERE paper_id = ?", [paper_id])
+        self.db.commit()
         return True

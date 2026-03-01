@@ -9,7 +9,8 @@ A web application for managing research papers with PDF viewing and note-taking 
 - **Database**: DuckDB
 - **PDF Viewer**: react-pdf
 - **Rich Text Editor**: BlockNote (markdown-style editor)
-- **UI Components**: Tailwind CSS + shadcn/ui
+- **Canvas**: reactflow (for Miro-style note positioning)
+- **UI Components**: Tailwind CSS
 
 ---
 
@@ -170,7 +171,11 @@ CREATE TABLE papers (
     note_id VARCHAR NOT NULL,        -- UUID
     page VARCHAR,                    -- "1", "1,3", "1-5", or ""
     tags JSON,                       -- ["methodology", "important"]
-    content TEXT,                    -- BlockNote JSON/HTML
+    content TEXT,                    -- BlockNote JSON
+    position_x FLOAT DEFAULT 0,      -- Canvas X coordinate
+    position_y FLOAT DEFAULT 0,      -- Canvas Y coordinate
+    width FLOAT DEFAULT 300,         -- Note card width in pixels
+    height FLOAT DEFAULT 200,        -- Note card height in pixels
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -228,12 +233,17 @@ CREATE TABLE papers (
   ```
 - **CREATE** note:
   ```sql
-  INSERT INTO papers (id, paper_id, note_id, page, tags, content)
-  VALUES (uuid(), ?, uuid(), ?, ?, ?);
+  INSERT INTO papers (id, paper_id, note_id, page, tags, content, position_x, position_y, width, height)
+  VALUES (uuid(), ?, uuid(), ?, ?, ?, ?, ?, ?, ?);
   ```
 - **UPDATE** note:
   ```sql
   UPDATE papers SET page = ?, tags = ?, content = ?, updated_at = CURRENT_TIMESTAMP
+  WHERE note_id = ?;
+  ```
+- **UPDATE** note position:
+  ```sql
+  UPDATE papers SET position_x = ?, position_y = ?, width = ?, height = ?, updated_at = CURRENT_TIMESTAMP
   WHERE note_id = ?;
   ```
 - **DELETE** note:
@@ -244,7 +254,8 @@ CREATE TABLE papers (
 **API Endpoints:**
 - `GET /papers/{paper_id}/notes` → Fetch all notes
 - `POST /papers/{paper_id}/notes` → Create note
-- `PUT /notes/{note_id}` → Update note
+- `PUT /notes/{note_id}` → Update note content
+- `PATCH /notes/{note_id}/position` → Update note position on canvas
 - `DELETE /notes/{note_id}` → Delete note
 
 ---
@@ -433,110 +444,94 @@ GET /search?query=RAG&max_results=10
 ┌─────────────────────────────────────────────┐
 │  ← Back    Paper Title                      │
 ├──────────────────────────║──────────────────┤
-│  PDF VIEWER              ║  Notes           │
+│  PDF VIEWER              ║  Notes Canvas    │
 │  [- 100% +]              ║  [+ Add Note]    │
 │  [PDF Content]           ║                  │
 │                          ║  ┌─────────────┐ │
 │                          ║  │ Page: 3     │ │
 │                          ║  │ methodology │ │
 │                          ║  │ Note text...│ │
-│                          ║  │ [Edit][Del] │ │
 │                          ║  └─────────────┘ │
+│                          ║    ┌──────────┐   │
+│                          ║    │ Page: 5  │   │
+│                          ║    │ key      │   │
+│                          ║    │ Text...  │   │
+│                          ║    └──────────┘   │
 └──────────────────────────║──────────────────┘
                            ↕ (Draggable)
 ```
 
 **Features:**
 - **Left Panel**: PDF Viewer with zoom controls (+/- buttons, 50%-200%)
-- **Right Panel**: Notes list
+- **Right Panel**: Infinite canvas for notes (Miro-style)
 - **Draggable Divider**: Drag to adjust panel widths (20%-80% range)
+- **Canvas Controls**: Pan, zoom, drag notes
+- **Note Cards**: Draggable post-it style cards with page, tags, content
 - Back button → Navigate to Dashboard
 - PDF displays directly from arXiv without downloading
 
-**Status:** ✅ Implemented
+**Canvas Features:**
+- Infinite 2D canvas (pan with mouse drag or scroll)
+- Zoom in/out on canvas (separate from PDF zoom)
+- Drag note cards to reposition
+- Resize note cards by dragging edges
+- Click inside note card to edit inline (no modal)
+- Select card (click outside fields) + Delete/Backspace key to delete
+- "+ Add Note" button creates new card at center/random position
+- No Edit/Delete buttons on cards
+
+**Interaction Model:**
+- **Add**: Click "+ Add Note" → New card appears on canvas → Click to edit
+- **Edit**: Click inside any field (page, tags, content) → Edit inline
+- **Move**: Drag card by header/empty space
+- **Resize**: Drag card edges/corners
+- **Delete**: Click card (not in fields) → Press Delete or Backspace key
+
+**Status:** ✅ Implemented (Linear) → 🔄 Upgrade to Canvas
 
 ---
 
-### 4. Add/Edit Note Modal (Right Side Overlay)
+### 4. Note Card (Canvas Item)
 
 **Layout:**
 ```
-┌──────────────────────────║──────────────────┐
-│  PDF VIEWER              ║ Add Note    [X]  │
-│  (Still Visible)         ║                  │
-│                          ║ Page Number:     │
-│                          ║ ┌──────────────┐ │
-│                          ║ │ 1, 3-5       │ │
-│                          ║ └──────────────┘ │
-│                          ║                  │
-│                          ║ Tags:            │
-│                          ║ ┌──────────────┐ │
-│                          ║ │ methodology  │ │
-│                          ║ └──────────────┘ │
-│                          ║ [methodology]    │
-│                          ║                  │
-│                          ║ Note:            │
-│                          ║ ┌──────────────┐ │
-│                          ║ │ BlockNote    │ │
-│                          ║ │ Editor       │ │
-│                          ║ └──────────────┘ │
-│                          ║                  │
-│                          ║ [Cancel] [Save]  │
-└──────────────────────────║──────────────────┘
+┌───────────────────────┐
+│ Page: [1, 3-5]        │  ← Click to edit inline
+├───────────────────────┤
+│ Tags: [methodology]   │  ← Click to edit inline
+├───────────────────────┤
+│                       │
+│ # Heading             │  ← Click to edit inline
+│ - List item           │     (BlockNote editor)
+│ Note content...       │
+│                       │
+└───────────────────────┘
 ```
 
 **Features:**
 
-#### Page Number Field
-Supports multiple formats:
-- Empty/Not specified: `""` → Applies to entire paper
-- Single page: `"3"` → Page 3
-- Multiple pages: `"1, 3, 5"` → Pages 1, 3, and 5
-- Range: `"1-5"` → Pages 1 through 5
-- Combined: `"1, 3-5, 10"` → Pages 1, 3, 4, 5, and 10
+#### Inline Editing
+- **No Edit Button**: Click directly inside any field to edit
+- **Page Field**: Click to edit, supports "", "1", "1,3", "1-5"
+- **Tags Field**: Click to edit comma-separated tags
+- **Content Field**: Click to edit with BlockNote editor
+- **Auto-save**: Save on blur or Ctrl+S
 
-**Validation:**
-- Parse input on blur/save
-- Show error for invalid formats
-- Store as string in database
+#### Keyboard Interactions
+- **Delete Card**: 
+  1. Click card background (not in any field)
+  2. Press Delete or Backspace key
+  3. Confirm deletion
+- **Tab**: Move between fields
+- **Escape**: Deselect card
 
-#### Tags Field
-- Input: Comma-separated text (`"methodology, important, steps"`)
-- Auto-parse on blur: Split by comma, trim whitespace
-- Display as **badges/pills** (colored capsules) below input
-- Each tag is clickable to remove
-- Store as array in database: `["methodology", "important", "steps"]`
+#### Mouse Interactions
+- **Move**: Drag card by header or empty space
+- **Resize**: Drag edges or corners
+- **Edit**: Click inside field to focus
+- **Select**: Click card background (shows selection border)
 
-**UI Example:**
-```
-Tags: methodology, important
-[methodology] [important] [steps]
-```
-
-**Styling:** Use Tailwind CSS badge classes
-
-#### Note Field
-- **Rich Text Editor**: BlockNote (https://www.blocknotejs.org/)
-- Supports markdown-style editing:
-  - Headings: `# Heading`
-  - Lists: `- Item` or `1. Item`
-  - Bold: `**text**`
-  - Italic: `*text*`
-  - Code: `` `code` ``
-  - Links: `[text](url)`
-- Store as JSON in database
-- Display rendered content in note cards (read-only BlockNoteView)
-
-**Save Behavior:**
-- Click "Save" → Show confirmation dialog: "Save this note?" (overlays only right panel)
-- On confirm → Save to database → Close modal → Refresh notes list
-
-**Modal Behavior:**
-- Modal overlays only the right panel (notes section)
-- PDF viewer remains visible on the left
-- Confirmation dialog also constrained to right panel
-
-**Status:** ✅ Implemented
+**Status:** 🔄 New Design
 
 ---
 
@@ -650,6 +645,10 @@ interface Note {
   page: string;            // "", "1", "1,3", "1-5"
   tags: string[];          // ["methodology", "important"]
   content: string;         // BlockNote JSON string
+  position_x: number;      // Canvas X coordinate
+  position_y: number;      // Canvas Y coordinate
+  width: number;           // Note card width (default: 300)
+  height: number;          // Note card height (default: 200)
   created_at: string;      // ISO 8601 format
   updated_at: string;      // ISO 8601 format
 }
@@ -658,12 +657,23 @@ interface NoteCreate {
   page: string;
   tags: string[];
   content: string;
+  position_x?: number;     // Optional, default to center or random
+  position_y?: number;
+  width?: number;
+  height?: number;
 }
 
 interface NoteUpdate {
   page?: string;
   tags?: string[];
   content?: string;
+}
+
+interface NotePositionUpdate {
+  position_x: number;
+  position_y: number;
+  width?: number;
+  height?: number;
 }
 ```
 
@@ -677,12 +687,23 @@ class NoteCreate(BaseModel):
     page: str = ""
     tags: list[str] = []
     content: str
+    position_x: float = 0.0
+    position_y: float = 0.0
+    width: float = 300.0
+    height: float = 200.0
 
 class NoteUpdate(BaseModel):
     """Request model for updating a note."""
     page: str | None = None
     tags: list[str] | None = None
     content: str | None = None
+
+class NotePositionUpdate(BaseModel):
+    """Request model for updating note position."""
+    position_x: float
+    position_y: float
+    width: float | None = None
+    height: float | None = None
 
 class NoteResponse(BaseModel):
     """Response model for a note."""
@@ -692,6 +713,10 @@ class NoteResponse(BaseModel):
     page: str
     tags: list[str]
     content: str
+    position_x: float
+    position_y: float
+    width: float
+    height: float
     created_at: str  # ISO 8601
     updated_at: str  # ISO 8601
 ```
@@ -705,6 +730,10 @@ note_id VARCHAR                  -- Note UUID
 page VARCHAR                     -- "", "1", "1,3", "1-5"
 tags JSON                        -- ["methodology", "important"]
 content TEXT                     -- BlockNote JSON string
+position_x FLOAT                 -- Canvas X coordinate
+position_y FLOAT                 -- Canvas Y coordinate
+width FLOAT                      -- Note card width
+height FLOAT                     -- Note card height
 created_at TIMESTAMP
 updated_at TIMESTAMP
 ```
@@ -720,6 +749,10 @@ Response: NoteResponse
 
 PUT /notes/{note_id}
 Request: NoteUpdate
+Response: NoteResponse
+
+PATCH /notes/{note_id}/position
+Request: NotePositionUpdate
 Response: NoteResponse
 
 DELETE /notes/{note_id}
@@ -956,8 +989,8 @@ DELETE /notes/{id}            - Delete note
 - `SearchModal.tsx` - Search and add papers (full-screen overlay)
 - `PaperCard.tsx` - Display paper in dashboard
 - `PdfViewer.tsx` - PDF rendering with zoom controls (react-pdf)
-- `NoteCard.tsx` - Display note with tags and read-only BlockNote content
-- `NoteModal.tsx` - Add/edit note form (overlays right panel only)
+- `NotesCanvas.tsx` - Infinite canvas for notes (reactflow)
+- `NoteCard.tsx` - Draggable note card with inline editing (page, tags, BlockNote)
 - Custom draggable divider - Split view with mouse drag support
 
 ### UI Libraries
@@ -965,6 +998,7 @@ DELETE /notes/{id}            - Delete note
 - **@blocknote/react** - Rich text editor core
 - **@blocknote/mantine** - BlockNote UI components
 - **react-pdf** - PDF viewer
+- **reactflow** - Canvas/flow diagram library for note positioning
 - **axios** - API client
 
 ---
@@ -1023,11 +1057,17 @@ function parseTags(input: string): string[] {
 ✅ Paper page with PDF viewer
 ✅ Draggable divider between PDF and Notes panels (20%-80% range)
 ✅ PDF zoom controls (+/- buttons, 50%-200%)
+🔄 Canvas-based notes system (Miro-style)
+  - Infinite 2D canvas for note positioning
+  - Drag and drop note cards
+  - Pan and zoom canvas
+  - Resize note cards
+  - Inline editing (click to edit fields directly)
+  - Keyboard deletion (select card + Delete/Backspace)
 ✅ CRUD notes with page numbers, tags, BlockNote editor
 ✅ Tag parsing and badge display
 ✅ BlockNote rich text editor (JSON storage)
-✅ Note modal overlays only right panel (PDF remains visible)
-✅ Read-only BlockNote display in note cards
+❌ Note modal (replaced with inline editing)
 
 ### Out of Scope (Future)
 ❌ User authentication

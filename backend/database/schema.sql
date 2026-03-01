@@ -22,6 +22,10 @@ CREATE TABLE papers (
     page VARCHAR,
     tags JSON,
     content TEXT,
+    position_x FLOAT DEFAULT 0,
+    position_y FLOAT DEFAULT 0,
+    width FLOAT DEFAULT 300,
+    height FLOAT DEFAULT 200,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

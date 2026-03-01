@@ -39,7 +39,7 @@ See MVP.md → "Database Schema" section
 **Tables:**
 - `users`: user_id='admin', username='bank', password='555'
 - `dashboards`: user_id, paper_id, paper_info (JSON)
-- `papers`: paper_id, note_id, page, tags (JSON), content
+- `papers`: paper_id, note_id, page, tags (JSON), content, position_x, position_y, width, height
 
 ## API Endpoints (see MVP.md for details)
 - `GET /search` - Search arXiv
@@ -48,7 +48,8 @@ See MVP.md → "Database Schema" section
 - `DELETE /dashboard/{paper_id}` - Remove paper
 - `GET /papers/{paper_id}/notes` - Get notes
 - `POST /papers/{paper_id}/notes` - Create note
-- `PUT /notes/{note_id}` - Update note
+- `PUT /notes/{note_id}` - Update note content
+- `PATCH /notes/{note_id}/position` - Update note position on canvas
 - `DELETE /notes/{note_id}` - Delete note
 
 ## Code Style

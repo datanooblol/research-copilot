@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Paper, Note, NoteCreate, NoteUpdate, SearchResult } from '@/types';
+import { Paper, Note, NoteCreate, NoteUpdate, NotePositionUpdate, SearchResult } from '@/types';
 
 const api = axios.create({
   baseURL: 'http://localhost:8000',
@@ -44,5 +44,10 @@ export const updateNote = async (noteId: string, note: NoteUpdate) => {
 
 export const deleteNote = async (noteId: string) => {
   const { data } = await api.delete<{ success: boolean }>(`/notes/${noteId}`);
+  return data;
+};
+
+export const updateNotePosition = async (noteId: string, position: NotePositionUpdate) => {
+  const { data } = await api.patch<Note>(`/notes/${noteId}/position`, position);
   return data;
 };
